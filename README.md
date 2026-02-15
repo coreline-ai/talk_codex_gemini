@@ -8,6 +8,10 @@
 ![Vite](https://img.shields.io/badge/Vite-7.3-purple)
 ![Express](https://img.shields.io/badge/Express-5.2-green)
 
+<p align="center">
+<img width="1512" height="874" alt="스크린샷 2026-02-15 오후 9 23 20" src="https://github.com/user-attachments/assets/e28bf697-fcd6-4e6b-8156-a57a98978929" />
+</p>
+
 ---
 
 ## 1. 프로젝트 개요 (Project Overview)
