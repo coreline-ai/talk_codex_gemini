@@ -9,7 +9,7 @@
 ![Express](https://img.shields.io/badge/Express-5.2-green)
 
 <p align="center">
-<img width="1512" height="874" alt="스크린샷 2026-02-15 오후 9 23 20" src="https://github.com/user-attachments/assets/e28bf697-fcd6-4e6b-8156-a57a98978929" />
+<img width="2914" height="2370" alt="screencapture-localhost-5173-2026-02-15-23_27_02 (1)" src="https://github.com/user-attachments/assets/a8c3babe-60a9-4643-a5e2-361958f533c0" />
 </p>
 
 ---
