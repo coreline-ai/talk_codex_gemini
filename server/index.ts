@@ -30,6 +30,7 @@ export function loadRuntimeConfig(): RuntimeConfig {
   return {
     port: parseIntWithDefault(process.env.PORT, 8787),
     defaultMaxRounds: parseIntWithDefault(process.env.DEFAULT_MAX_ROUNDS, 6),
+    defaultTextLimit: parseIntWithDefault(process.env.DEFAULT_TEXT_LIMIT, 100),
     turnTimeoutMs: parseIntWithDefault(process.env.TURN_TIMEOUT_MS, 120_000),
     consensusRegex: new RegExp(consensusPattern, "i"),
     commandTemplates: {
@@ -101,8 +102,10 @@ export async function createServer() {
         : "";
       const maxRoundsRaw = (body as Record<string, unknown>).maxRounds;
       const maxRounds = typeof maxRoundsRaw === "number" ? maxRoundsRaw : undefined;
+      const textLimitRaw = (body as Record<string, unknown>).textLimit;
+      const textLimit = typeof textLimitRaw === "number" ? textLimitRaw : undefined;
 
-      await engine.startDebate(topic, maxRounds);
+      await engine.startDebate(topic, maxRounds, textLimit);
       res.json({ ok: true, state: engine.getState() });
     } catch (error) {
       res.status(400).json({
@@ -176,6 +179,7 @@ export async function createServer() {
           round: state.debate.round || undefined,
           topic: state.debate.topic || undefined,
           maxRounds: state.debate.maxRounds || undefined,
+          textLimit: state.debate.textLimit || undefined,
           reason: state.debate.reason,
         },
       }),

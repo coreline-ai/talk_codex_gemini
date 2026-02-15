@@ -2,6 +2,9 @@
 
 import { spawn } from "node:child_process";
 
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash-lite";
+const GEMINI_STATELESS = /^(1|true|yes)$/i.test(process.env.GEMINI_STATELESS ?? "0");
+
 function parseArgs(argv) {
   const args = { mode: "start", session: "", prompt: "", timeoutMs: 120000 };
   for (let i = 2; i < argv.length; i += 1) {
@@ -80,8 +83,8 @@ async function main() {
     throw new Error("prompt is required");
   }
 
-  const runArgs = ["-m", "gemini-2.5-flash-lite", "--output-format", "json"];
-  if (args.mode === "resume") {
+  const runArgs = ["-m", GEMINI_MODEL, "--output-format", "json"];
+  if (args.mode === "resume" && !GEMINI_STATELESS) {
     runArgs.push("--resume", args.session || "latest");
   }
   runArgs.push(prompt);

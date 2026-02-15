@@ -8,6 +8,7 @@ export interface RunSummary {
   updatedAt: string;
   topic: string;
   maxRounds: number;
+  textLimit: number;
   status: DebateStatus;
   round: number;
   reason?: string;
@@ -42,7 +43,7 @@ export class RunLogStore {
     return path.join(this.runsDir, `${runId}.jsonl`);
   }
 
-  createRun(topic: string, maxRounds: number): RunSummary {
+  createRun(topic: string, maxRounds: number, textLimit: number): RunSummary {
     this.ensureDir();
     const now = new Date().toISOString();
     const summary: RunSummary = {
@@ -51,6 +52,7 @@ export class RunLogStore {
       updatedAt: now,
       topic,
       maxRounds,
+      textLimit,
       status: "running",
       round: 0,
     };

@@ -12,11 +12,16 @@ function wsUrlFromLocation(): string {
   return `${protocol}//${window.location.host}/ws`;
 }
 
-export function connectWs(onEvent: (event: WsEvent) => void, onError: (error: string) => void): WsClient {
+export function connectWs(
+  onEvent: (event: WsEvent) => void,
+  onError: (error: string) => void,
+  onConnected?: () => void,
+): WsClient {
   let socket: WebSocket | null = null;
   let heartbeat: number | null = null;
   let reconnectTimer: number | null = null;
   let manualClose = false;
+  let errorAnnounced = false;
 
   const clearTimers = () => {
     if (heartbeat) window.clearInterval(heartbeat);
@@ -38,6 +43,8 @@ export function connectWs(onEvent: (event: WsEvent) => void, onError: (error: st
     socket = new WebSocket(wsUrlFromLocation());
 
     socket.onopen = () => {
+      errorAnnounced = false;
+      onConnected?.();
       heartbeat = window.setInterval(() => {
         if (socket && socket.readyState === WebSocket.OPEN) {
           socket.send(JSON.stringify({ type: "ping" }));
@@ -55,7 +62,10 @@ export function connectWs(onEvent: (event: WsEvent) => void, onError: (error: st
     };
 
     socket.onerror = () => {
-      onError("WebSocket 연결 오류가 발생했습니다. 재연결을 시도합니다.");
+      if (!errorAnnounced) {
+        errorAnnounced = true;
+        onError("WebSocket 연결 오류가 발생했습니다. 재연결을 시도합니다.");
+      }
     };
 
     socket.onclose = () => {

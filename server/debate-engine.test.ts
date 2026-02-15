@@ -11,6 +11,7 @@ import type { RuntimeConfig, ServerEvent } from "./types.js";
 const baseConfig: RuntimeConfig = {
   port: 8787,
   defaultMaxRounds: 2,
+  defaultTextLimit: 100,
   turnTimeoutMs: 2_000,
   consensusRegex: /(합의|동의|consensus|agreed)/i,
   commandTemplates: {
@@ -103,11 +104,75 @@ describe("DebateEngine", () => {
     const turnCalls = runner.calls.filter((call) => !call.prompt.includes("세션 연결 상태 점검"));
     expect(turnCalls[0]?.agent).toBe("codex");
     expect(turnCalls[1]?.agent).toBe("gemini");
+    expect(turnCalls[0]?.prompt).toContain("100자");
+    expect(turnCalls[1]?.prompt).toContain("100자");
 
     const runId = engine.getState().debate.runId;
     const run = engine.getRun(runId);
     expect(run?.entries.length).toBeGreaterThanOrEqual(2);
     expect(events.some((event) => event.type === "turn_log")).toBe(true);
+  });
+
+  it("keeps full response in logs and trims context passed to next round", async () => {
+    const stores = makeStores();
+    const longCodex = "c".repeat(180);
+    const longGemini = "g".repeat(180);
+    const runner = new StubRunner(async (opts) => {
+      if (opts.prompt.includes("세션 연결 상태 점검")) {
+        return {
+          stdout: JSON.stringify({ session_id: `${opts.agent}-sx`, text: "OK" }),
+          stderr: "",
+          text: "OK",
+          sessionId: `${opts.agent}-sx`,
+          command: "stub",
+        };
+      }
+      if (opts.agent === "codex" && opts.prompt.includes("토론 라운드: 2")) {
+        return {
+          stdout: JSON.stringify({ session_id: `${opts.agent}-sx`, text: "round2 codex" }),
+          stderr: "",
+          text: "round2 codex",
+          sessionId: `${opts.agent}-sx`,
+          command: "stub",
+        };
+      }
+      if (opts.agent === "gemini" && opts.prompt.includes("토론 라운드: 2")) {
+        return {
+          stdout: JSON.stringify({ session_id: `${opts.agent}-sx`, text: "round2 gemini" }),
+          stderr: "",
+          text: "round2 gemini",
+          sessionId: `${opts.agent}-sx`,
+          command: "stub",
+        };
+      }
+      return {
+        stdout: JSON.stringify({
+          session_id: `${opts.agent}-sx`,
+          text: opts.agent === "codex" ? longCodex : longGemini,
+        }),
+        stderr: "",
+        text: opts.agent === "codex" ? longCodex : longGemini,
+        sessionId: `${opts.agent}-sx`,
+        command: "stub",
+      };
+    });
+
+    const engine = new DebateEngine(baseConfig, runner, stores.sessions, stores.runs, () => undefined);
+    await engine.connectAgent("gemini");
+    await engine.connectAgent("codex");
+    await engine.startDebate("limit 테스트", 2, 100);
+    await waitFor(() => engine.getState().debate.status === "completed");
+
+    const run = engine.getRun(engine.getState().debate.runId);
+    expect(run?.summary.textLimit).toBe(100);
+    expect(run?.entries[0]?.response.length).toBe(180);
+    expect(run?.entries[1]?.response.length).toBe(180);
+
+    const codexRound2 = runner.calls.find(
+      (call) => call.agent === "codex" && call.prompt.includes("토론 라운드: 2"),
+    );
+    expect(codexRound2?.prompt).toContain("g".repeat(100));
+    expect(codexRound2?.prompt).not.toContain("g".repeat(101));
   });
 
   it("pauses at turn boundary and resumes", async () => {

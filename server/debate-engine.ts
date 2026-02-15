@@ -79,6 +79,12 @@ interface WaitHandle {
   resolve: () => void;
 }
 
+interface TurnResult {
+  fullText: string;
+  limitedText: string;
+  raw: AgentRunResult;
+}
+
 export class DebateEngine {
   private state: DebateEngineState;
   private currentRun: RunSummary | null = null;
@@ -102,6 +108,7 @@ export class DebateEngine {
         round: 0,
         topic: "",
         maxRounds: config.defaultMaxRounds,
+        textLimit: config.defaultTextLimit,
       },
       agents: {
         gemini: {
@@ -140,6 +147,7 @@ export class DebateEngine {
         reason,
         topic: this.state.debate.topic || undefined,
         maxRounds: this.state.debate.maxRounds || undefined,
+        textLimit: this.state.debate.textLimit || undefined,
       },
     });
   }
@@ -208,7 +216,28 @@ export class DebateEngine {
     }
   }
 
-  async startDebate(topic: string, maxRounds?: number): Promise<void> {
+  private sanitizeTextLimit(value?: number): number {
+    if (typeof value !== "number" || !Number.isFinite(value)) {
+      return this.config.defaultTextLimit;
+    }
+    return Math.max(1, Math.floor(value));
+  }
+
+  private trimByLimit(text: string): string {
+    const limit = this.sanitizeTextLimit(this.state.debate.textLimit);
+    if (!text) return "";
+    return text.length > limit ? text.slice(0, limit) : text;
+  }
+
+  private getResponseLimitInstruction(): string {
+    const limit = this.sanitizeTextLimit(this.state.debate.textLimit);
+    return [
+      `중요: 최종 답변은 공백 포함 정확히 ${limit}자 이내로 작성하세요.`,
+      `${limit}자를 넘기지 말고, 길면 스스로 축약하세요.`,
+    ].join(" ");
+  }
+
+  async startDebate(topic: string, maxRounds?: number, textLimit?: number): Promise<void> {
     const trimmedTopic = topic.trim();
     if (!trimmedTopic) throw new Error("토론 주제가 비어 있습니다.");
     if (this.executionPromise) throw new Error("이미 실행 중인 토론이 있습니다.");
@@ -218,7 +247,12 @@ export class DebateEngine {
 
     this.control = { pauseRequested: false, stopRequested: false };
     this.consecutiveEmptyResponses = 0;
-    const run = this.runLogStore.createRun(trimmedTopic, maxRounds ?? this.config.defaultMaxRounds);
+    const resolvedTextLimit = this.sanitizeTextLimit(textLimit);
+    const run = this.runLogStore.createRun(
+      trimmedTopic,
+      maxRounds ?? this.config.defaultMaxRounds,
+      resolvedTextLimit,
+    );
     this.currentRun = run;
 
     this.state.debate = {
@@ -227,9 +261,13 @@ export class DebateEngine {
       round: 0,
       topic: trimmedTopic,
       maxRounds: maxRounds ?? this.config.defaultMaxRounds,
+      textLimit: resolvedTextLimit,
     };
     this.setDebateStatus("running");
-    this.panelOutput("center", `=== 토론 시작: ${trimmedTopic} (runId=${run.runId}) ===`);
+    this.panelOutput(
+      "center",
+      `=== 토론 시작: ${trimmedTopic} (runId=${run.runId}, textLimit=${resolvedTextLimit}) ===`,
+    );
 
     this.executionPromise = this.runLoop().finally(() => {
       this.executionPromise = null;
@@ -301,12 +339,14 @@ export class DebateEngine {
                 `토론 주제: ${this.state.debate.topic}`,
                 "당신은 Codex 역할입니다. 토론을 시작하세요.",
                 "형식: 주장 2개, 예상 리스크 1개.",
+                this.getResponseLimitInstruction(),
               ].join("\n")
             : [
                 `토론 주제: ${this.state.debate.topic}`,
                 `토론 라운드: ${round}`,
                 `상대(Gemini) 최신 의견:\n${latestGemini}`,
                 "상대 의견을 반박/수용으로 나누어 답변하세요.",
+                this.getResponseLimitInstruction(),
               ].join("\n");
 
         const codex = await this.invokeTurn("codex", "gemini", round, codexPrompt);
@@ -319,12 +359,13 @@ export class DebateEngine {
         const geminiPrompt = [
           `토론 주제: ${this.state.debate.topic}`,
           `토론 라운드: ${round}`,
-          `상대(Codex) 최신 의견:\n${codex.text}`,
+          `상대(Codex) 최신 의견:\n${codex.limitedText}`,
           "상대 의견에 대한 반박/수용과 개선안을 제시하세요.",
+          this.getResponseLimitInstruction(),
         ].join("\n");
 
         const gemini = await this.invokeTurn("gemini", "codex", round, geminiPrompt);
-        latestGemini = gemini.text;
+        latestGemini = gemini.limitedText;
 
         if (this.control.stopRequested) {
           finalStatus = "stopped";
@@ -333,8 +374,8 @@ export class DebateEngine {
         }
 
         if (
-          this.config.consensusRegex.test(codex.text) ||
-          this.config.consensusRegex.test(gemini.text)
+          this.config.consensusRegex.test(codex.fullText) ||
+          this.config.consensusRegex.test(gemini.fullText)
         ) {
           finalStatus = "completed";
           finalReason = "consensus detected";
@@ -406,7 +447,7 @@ export class DebateEngine {
     to: AgentName,
     round: number,
     prompt: string,
-  ): Promise<AgentRunResult> {
+  ): Promise<TurnResult> {
     const runId = this.state.debate.runId;
     if (!runId) throw new Error("runId가 없습니다.");
 
@@ -436,6 +477,7 @@ export class DebateEngine {
     }
 
     const responseText = result.text.trim();
+    const limitedText = this.trimByLimit(responseText);
     if (!responseText) {
       this.consecutiveEmptyResponses += 1;
       if (this.consecutiveEmptyResponses >= 2) {
@@ -460,9 +502,8 @@ export class DebateEngine {
     this.runLogStore.updateSummary(runId, { round });
     this.emit({ type: "turn_log", payload: entry });
 
-    const short = responseText.length > 300 ? `${responseText.slice(0, 300)}...` : responseText;
-    this.panelOutput("center", relayResponseLine(round, from, short));
-    return result;
+    this.panelOutput("center", relayResponseLine(round, from, limitedText));
+    return { fullText: responseText, limitedText, raw: result };
   }
 }
 

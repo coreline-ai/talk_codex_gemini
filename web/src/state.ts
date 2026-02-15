@@ -1,5 +1,6 @@
 export type AgentName = "gemini" | "codex";
 export type AgentStatus = "idle" | "connecting" | "ready" | "error";
+export type MessageRole = AgentName | "system";
 export type DebateStatus =
   | "idle"
   | "running"
@@ -21,12 +22,15 @@ export interface UiDebateState {
   round: number;
   topic: string;
   maxRounds: number;
+  textLimit: number;
   reason?: string;
 }
 
 export interface UiState {
   topicInput: string;
   maxRoundsInput: number;
+  textLimitInput: number;
+  messages: ChatMessage[];
   agents: Record<AgentName, UiAgentState>;
   debate: UiDebateState;
   panels: {
@@ -35,6 +39,15 @@ export interface UiState {
     right: string[];
   };
   errorBanner: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  role: MessageRole;
+  text: string;
+  ts: string;
+  round?: number;
+  label?: string;
 }
 
 export interface ControlAvailability {
@@ -47,6 +60,8 @@ export interface ControlAvailability {
 export const initialUiState: UiState = {
   topicInput: "",
   maxRoundsInput: 6,
+  textLimitInput: 100,
+  messages: [],
   agents: {
     gemini: { status: "idle", sessionId: "" },
     codex: { status: "idle", sessionId: "" },
@@ -57,6 +72,7 @@ export const initialUiState: UiState = {
     round: 0,
     topic: "",
     maxRounds: 6,
+    textLimit: 100,
   },
   panels: {
     left: [],
@@ -83,6 +99,8 @@ export function getControlAvailability(state: UiState): ControlAvailability {
 export type UiAction =
   | { type: "set_topic"; topic: string }
   | { type: "set_max_rounds"; value: number }
+  | { type: "set_text_limit"; value: number }
+  | { type: "append_message"; payload: ChatMessage }
   | { type: "agent_status"; payload: { agent: AgentName; status: AgentStatus; sessionId?: string; error?: string } }
   | {
       type: "debate_state";
@@ -93,6 +111,7 @@ export type UiAction =
         reason?: string;
         topic?: string;
         maxRounds?: number;
+        textLimit?: number;
       };
     }
   | { type: "panel_output"; payload: { panel: "left" | "center" | "right"; line: string } }
@@ -109,12 +128,24 @@ function pushLine(lines: string[], line: string, max = 2000): string[] {
   return next;
 }
 
+function pushMessage(messages: ChatMessage[], message: ChatMessage, max = 1200): ChatMessage[] {
+  const next = [...messages, message];
+  if (next.length > max) {
+    return next.slice(next.length - max);
+  }
+  return next;
+}
+
 export function uiReducer(state: UiState, action: UiAction): UiState {
   switch (action.type) {
     case "set_topic":
       return { ...state, topicInput: action.topic };
     case "set_max_rounds":
       return { ...state, maxRoundsInput: action.value };
+    case "set_text_limit":
+      return { ...state, textLimitInput: action.value };
+    case "append_message":
+      return { ...state, messages: pushMessage(state.messages, action.payload) };
     case "agent_status": {
       const current = state.agents[action.payload.agent];
       return {
@@ -140,6 +171,7 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
           round: action.payload.round ?? state.debate.round,
           topic: action.payload.topic ?? state.debate.topic,
           maxRounds: action.payload.maxRounds ?? state.debate.maxRounds,
+          textLimit: action.payload.textLimit ?? state.debate.textLimit,
           reason: action.payload.reason,
         },
       };
@@ -156,7 +188,7 @@ export function uiReducer(state: UiState, action: UiAction): UiState {
     case "clear_error":
       return { ...state, errorBanner: "" };
     case "reset_panels":
-      return { ...state, panels: { left: [], center: [], right: [] } };
+      return { ...state, panels: { left: [], center: [], right: [] }, messages: [] };
     case "hydrate":
       return {
         ...state,

@@ -43,4 +43,33 @@ describe("ui state", () => {
     expect(controls.canResume).toBe(true);
     expect(controls.canStop).toBe(true);
   });
+
+  it("updates text limit input and debate text limit", () => {
+    let state = { ...initialUiState };
+    state = uiReducer(state, { type: "set_text_limit", value: 150 });
+    expect(state.textLimitInput).toBe(150);
+
+    state = uiReducer(state, {
+      type: "debate_state",
+      payload: { status: "idle", textLimit: 150 },
+    });
+    expect(state.debate.textLimit).toBe(150);
+  });
+
+  it("appends chat message and clears on reset", () => {
+    let state = { ...initialUiState };
+    state = uiReducer(state, {
+      type: "append_message",
+      payload: {
+        id: "m1",
+        role: "codex",
+        text: "테스트 메시지",
+        ts: new Date().toISOString(),
+      },
+    });
+    expect(state.messages.length).toBe(1);
+
+    state = uiReducer(state, { type: "reset_panels" });
+    expect(state.messages.length).toBe(0);
+  });
 });

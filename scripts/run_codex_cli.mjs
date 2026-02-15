@@ -2,6 +2,8 @@
 
 import { spawn } from "node:child_process";
 
+const CODEX_MODEL = process.env.CODEX_MODEL || "gpt-5-codex";
+
 function parseArgs(argv) {
   const args = { mode: "start", session: "", prompt: "", timeoutMs: 120000 };
   for (let i = 2; i < argv.length; i += 1) {
@@ -87,7 +89,7 @@ function parseCodexJsonl(stdout) {
 async function runCodexStart(prompt, timeoutMs, sessionHint = "") {
   const result = await runCommand(
     "codex",
-    ["exec", "--skip-git-repo-check", "--json", "-m", "gpt-5-codex", prompt],
+    ["exec", "--skip-git-repo-check", "--json", "-m", CODEX_MODEL, prompt],
     timeoutMs,
     sessionHint ? { CODEX_SESSION_HINT: sessionHint } : {},
   );
@@ -104,12 +106,23 @@ async function runCodexStart(prompt, timeoutMs, sessionHint = "") {
   };
 }
 
+function isFallbackableResumeError(outputText) {
+  const text = String(outputText ?? "");
+  return (
+    /Not inside a trusted directory/i.test(text) ||
+    /stream disconnected before completion/i.test(text) ||
+    /model .* does not exist/i.test(text) ||
+    /do not have access/i.test(text) ||
+    /not supported when using Codex/i.test(text)
+  );
+}
+
 async function runCodexResume(sessionId, prompt, timeoutMs) {
   // First try true resume. If environment requires trusted git dir and blocks this mode,
   // fallback to fresh non-interactive exec while preserving operation continuity.
   const resumeAttempt = await runCommand(
     "codex",
-    ["exec", "resume", sessionId, prompt],
+    ["exec", "resume", "-c", `model="${CODEX_MODEL}"`, sessionId, prompt],
     timeoutMs,
   );
 
@@ -122,10 +135,8 @@ async function runCodexResume(sessionId, prompt, timeoutMs) {
     };
   }
 
-  const blockedByTrust = /Not inside a trusted directory/i.test(
-    `${resumeAttempt.stderr}\n${resumeAttempt.stdout}`,
-  );
-  if (!blockedByTrust) {
+  const combined = `${resumeAttempt.stderr}\n${resumeAttempt.stdout}`;
+  if (!isFallbackableResumeError(combined)) {
     throw new Error(
       `codex resume failed (exit=${resumeAttempt.code}): ${resumeAttempt.stderr || resumeAttempt.stdout}`,
     );

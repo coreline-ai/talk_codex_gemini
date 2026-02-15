@@ -21,6 +21,7 @@ export interface AgentSession {
 export interface DebateConfig {
   topic: string;
   maxRounds: number;
+  textLimit: number;
   consensusRegex: string;
   turnTimeoutMs: number;
 }
@@ -43,12 +44,14 @@ export interface DebateStateSnapshot {
   round: number;
   topic: string;
   maxRounds: number;
+  textLimit: number;
   reason?: string;
 }
 
 export interface RuntimeConfig {
   port: number;
   defaultMaxRounds: number;
+  defaultTextLimit: number;
   turnTimeoutMs: number;
   consensusRegex: RegExp;
   commandTemplates: Record<AgentName, { start: string; resume: string }>;
@@ -68,6 +71,7 @@ export type ServerEvent =
         reason?: string;
         topic?: string;
         maxRounds?: number;
+        textLimit?: number;
       };
     }
   | { type: "turn_log"; payload: TranscriptEntry }

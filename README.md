@@ -93,7 +93,11 @@ cp .env.example .env
 PORT=8787
 CONSENSUS_REGEX=(합의|동의|consensus|agreed)
 DEFAULT_MAX_ROUNDS=6
+DEFAULT_TEXT_LIMIT=100
 TURN_TIMEOUT_MS=120000
+CODEX_MODEL=gpt-5-codex
+GEMINI_MODEL=gemini-2.5-flash-lite
+GEMINI_STATELESS=0
 
 # Real CLI wrapper 설정 (JSON 표준화)
 GEMINI_START_CMD=node scripts/run_gemini_cli.mjs --mode start --prompt {prompt}
@@ -105,6 +109,7 @@ CODEX_RESUME_CMD=node scripts/run_codex_cli.mjs --mode resume --session {session
 > 참고:
 > - `start` 템플릿은 `{prompt}`를 포함해야 합니다.
 > - `resume` 템플릿은 `{session_id}`와 `{prompt}`를 모두 포함해야 합니다.
+> - `GEMINI_STATELESS=0`(기본)은 resume 세션을 유지합니다. `1`로 바꾸면 stateless로 실행됩니다.
 > - `scripts/mock_agent.mjs`는 테스트/검증용입니다.
 
 ### 4.4 개발 모드 실행
@@ -131,7 +136,7 @@ npm run dev:down
 ## 5. 사용 가이드 (Usage Guide)
 
 1.  **에이전트 연결**: 웹 UI 하단의 **"Gemini 구동/재연결"**, **"Codex 구동/재연결"** 버튼을 눌러 각 에이전트 세션을 준비합니다. (Ready 상태 확인)
-2.  **주제 입력**: 상단 입력창에 토론하고 싶은 주제를 입력합니다. (예: "React vs Vue 장단점 분석")
+2.  **주제/제한값 입력**: 상단 입력창에 토론 주제를 입력하고, 필요 시 **텍스트 제한(자)** 값을 조정합니다. (기본 100자)
 3.  **토론 시작**: **"토론 시작"** 버튼을 클릭합니다.
 4.  **모니터링 & 제어**:
     - 중앙 패널에서 실시간 대화 내용을 확인합니다.
